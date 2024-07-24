@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { CreateUserDto, LoginUserDto } from './dto/auth.dto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2'
@@ -8,6 +8,12 @@ import { JwtPayload } from './types/jwtPayload.type';
 import { myJwtConstants } from './strategies/constants';
 
 const prisma = new PrismaClient()
+
+export interface userModel {
+  id: string,
+  name: string,
+  username: string,
+}
 
 @Injectable()
 export class AuthService {
@@ -91,6 +97,17 @@ export class AuthService {
     return true
   }
 
+
+  async getUserById(userId: string): Promise<userModel> {
+    const user = await prisma.users.findUnique({
+      where: {
+        id: userId
+      }
+    })
+    if (!user) throw new BadRequestException("User Not Found")
+    return user
+  }
+
   async refreshTokens(userId: string, rt: string): Promise<Tokens> {
     const user = await prisma.users.findUnique({
       where: {
@@ -110,6 +127,8 @@ export class AuthService {
   }
 
   async getTokens(userId: string, username: string): Promise<Tokens> {
+    const at_exp = 60 * 15
+    const rt_exp = 60 * 60 * 24 * 7
 
     const jwtPayload: JwtPayload = {
       username: username,
@@ -118,17 +137,21 @@ export class AuthService {
     const [at, rt] = await Promise.all([
       this.jwtService.signAsync(jwtPayload, {
         secret: myJwtConstants.secret.at,
-        expiresIn: '15m',
+        // expiresIn: '15m',
+        expiresIn: at_exp,
       }),
       this.jwtService.signAsync(jwtPayload, {
         secret: myJwtConstants.secret.rt,
-        expiresIn: '7d',
+        // expiresIn: '7d',
+        expiresIn: rt_exp,
       })
     ]);
 
     return {
       access_token: at,
       refresh_token: rt,
+      at_exp: at_exp,
+      rt_exp: rt_exp,
     }
   }
 
