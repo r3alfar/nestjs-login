@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards, Req, Res } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, UseGuards, Req, Res, ForbiddenException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto } from './dto/auth.dto';
 import { Tokens } from './tokens/tokens.type';
@@ -40,7 +40,6 @@ export class AuthController {
     res.cookie('accessToken', tokens.access_token, {
       httpOnly: true,
       maxAge: tokens.at_exp * 1000
-      // maxAge: tokens.at_exp * 1000 - Date.now()
       // secure: for https
     })
 
@@ -48,7 +47,6 @@ export class AuthController {
     res.cookie('refreshToken', tokens.refresh_token, {
       httpOnly: true,
       maxAge: tokens.rt_exp * 1000,
-      // maxAge: tokens.rt_exp * 1000 - Date.now(),
       // secure: for https
     })
 
@@ -70,6 +68,7 @@ export class AuthController {
     // console.log("cur req:", req.user)
     console.log("custom request userId: ", userId)
 
+    this.authService.logout(userId)
     res.cookie('refreshToken', '', {
       httpOnly: true,
       maxAge: 0,
@@ -97,8 +96,30 @@ export class AuthController {
   async verifyToken(
     @Res() res: Response,
     @GetCurrentUserId() userId: string,
+    @GetCurrentUser('refreshToken') refreshToken: string,
+    @GetCurrentUser('accessToken') accessToken: string,
   ) {
-    // res.json(req.user)
+    if (!accessToken && refreshToken) {
+      console.log("BEGIN REFRESHING TOKEN................................")
+      const newTokens = await this.authService.refreshTokens(userId, refreshToken)
+      // send new tokens
+      // accesstoken
+      res.cookie('accessToken', newTokens.access_token, {
+        httpOnly: true,
+        maxAge: newTokens.at_exp * 1000
+      })
+
+      // refresh token
+      res.cookie('refreshToken', newTokens.refresh_token, {
+        httpOnly: true,
+        maxAge: newTokens.rt_exp * 1000,
+      })
+    }
+    else if (!accessToken && !refreshToken) {
+      await this.authService.logout(userId)
+      throw new ForbiddenException("Unauthorized! Token Invalid")
+    }
+
     const user = await this.authService.getUserById(userId)
     console.log("getuserbyId backend: ", user)
     res.json(user)
@@ -116,24 +137,3 @@ export class AuthController {
     res.json(user)
   }
 }
-
-
-// using Authorization Header Bearer
-
-// @Post('signin')
-// @HttpCode(HttpStatus.OK)
-// signIn(
-//   @Body() userData: LoginUserDto
-// ): Promise<Tokens> {
-//   return this.authService.signIn(userData)
-// }
-
-// @UseGuards(AtGuard)
-// @Post('logout')
-// @HttpCode(HttpStatus.OK)
-// logout(
-//   @GetCurrentUserId() userId: string
-// ) {
-//   console.log("cur userId:", userId)
-//   return this.authService.logout(userId)
-// }
