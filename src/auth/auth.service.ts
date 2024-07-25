@@ -52,7 +52,6 @@ export class AuthService {
         console.log("ERROR CODE: ", error.code)
         if (error.code === 'P2002') {
           const message = "There is a unique constraint violation, a new user cannot be created with this email"
-          console.log(message)
           throw {
             error_code: error.code,
             reason: message,
